@@ -1,0 +1,71 @@
+name: Update Formula
+
+on:
+  repository_dispatch:
+    types: [update-formula]
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update formula
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix
+
+          SHA_DARWIN_AMD64="${{ github.event.client_payload.sha256_darwin_amd64 }}"
+          SHA_DARWIN_ARM64="${{ github.event.client_payload.sha256_darwin_arm64 }}"
+          SHA_LINUX_AMD64="${{ github.event.client_payload.sha256_linux_amd64 }}"
+          SHA_LINUX_ARM64="${{ github.event.client_payload.sha256_linux_arm64 }}"
+
+          cat > Formula/prev.rb << EOF
+          class Prev < Formula
+            desc "Preview environments for web projects"
+            homepage "https://prev.sh"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/pepperpark/apt/releases/download/v${VERSION}/prev-darwin-arm64"
+                sha256 "${SHA_DARWIN_ARM64}"
+              else
+                url "https://github.com/pepperpark/apt/releases/download/v${VERSION}/prev-darwin-amd64"
+                sha256 "${SHA_DARWIN_AMD64}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/pepperpark/apt/releases/download/v${VERSION}/prev-linux-arm64"
+                sha256 "${SHA_LINUX_ARM64}"
+              else
+                url "https://github.com/pepperpark/apt/releases/download/v${VERSION}/prev-linux-amd64"
+                sha256 "${SHA_LINUX_AMD64}"
+              end
+            end
+
+            def install
+              binary = Dir["prev-*"].first || "prev"
+              mv binary, "prev" if binary != "prev"
+              bin.install "prev"
+            end
+
+            test do
+              assert_match "prev", shell_output("#{bin}/prev --version")
+            end
+          end
+          EOF
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' Formula/prev.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Formula/prev.rb
+          git commit -m "Update prev to ${{ github.event.client_payload.version }}"
+          git push
